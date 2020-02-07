@@ -28,11 +28,23 @@ def home():
         'online': True
     })
 
-def compressFile(file):
+def compressImage(file, quality = None):
+    if not quality:
+        quality = 80
     filepath = UPLOAD_FOLDER + file
 
-    picture = Image.open(filepath)
-    picture.save(filepath, picture.format, optimize=True, quality=80)
+    image = Image.open(filepath)
+    image.save(filepath, image.format, optimize=True, quality=quality)
+    return
+
+def resizeImage(file, size = None):
+    if not size:
+        return
+    filepath = UPLOAD_FOLDER + file
+    image = Image.open(filepath)
+    width, height = image.size
+    print(width, height)
+
     return
 
 def saveFile(file, name, folder=None, format = None):
@@ -63,8 +75,15 @@ def upload():
         return response
 
     folder = None
+    quality = None
+    size = None
+
     if 'folder' in request.form:
         folder = request.form.get('folder')
+    if 'quality' in request.form:
+        quality = request.form.get('quality')
+    if 'size' in request.form:
+        size = request.form.get('size')
     
     files = []
     for key, file in request.files.items():
@@ -82,7 +101,8 @@ def upload():
         file_name, file_extension = os.path.splitext(savedFile)
         mimetype = mimetypes.types_map[file_extension]
         if mimetype in MIMES_COMPRESSION:
-            compressFile(savedFile)
+            compressImage(savedFile, quality)
+            resizeImage(savedFile, size)
         
         files.append(savedFile)
 
