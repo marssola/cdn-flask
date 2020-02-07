@@ -2,15 +2,23 @@ import os
 import json
 import time
 from random import random
+import mimetypes
 
 from flask_api import FlaskAPI, status, exceptions
 from flask import jsonify, request, url_for, redirect
 from slugify import slugify
+from PIL import Image
 
 app = FlaskAPI(__name__)
 
 UPLOAD_FOLDER='./upload'
 PUBLIC_FOLDER='./public'
+
+mimetypes.init()
+MIMES_COMPRESSION = [
+    'image/jpeg',
+    'image/png'
+]
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
@@ -19,6 +27,13 @@ def home():
     return jsonify({
         'online': True
     })
+
+def compressFile(file):
+    filepath = UPLOAD_FOLDER + file
+
+    picture = Image.open(filepath)
+    picture.save(filepath, picture.format, optimize=True, quality=80)
+    return
 
 def saveFile(file, name, folder=None, format = None):
     path = ''
@@ -63,6 +78,12 @@ def upload():
         data['file'] = file
         data['folder'] = folder
         savedFile = saveFile(**data)
+        
+        file_name, file_extension = os.path.splitext(savedFile)
+        mimetype = mimetypes.types_map[file_extension]
+        if mimetype in MIMES_COMPRESSION:
+            compressFile(savedFile)
+        
         files.append(savedFile)
 
     
