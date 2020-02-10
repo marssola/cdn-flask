@@ -1,18 +1,19 @@
 import os
 import json
 import time
-from random import random
 import mimetypes
+import pathlib
 
 from flask_api import FlaskAPI, status, exceptions
-from flask import jsonify, request, url_for, redirect
-from slugify import slugify
-from PIL import Image
+from flask import jsonify, request, url_for, redirect, abort, Response
+
+from File import saveFile
+from ImageManipulation import convertImage, compressImage, resizeImage, thumbnailImage
+
+from configure import uploadFolder
+UPLOAD_FOLDER = uploadFolder()
 
 app = FlaskAPI(__name__)
-
-UPLOAD_FOLDER='./upload'
-PUBLIC_FOLDER='./public'
 
 mimetypes.init()
 MIMES_COMPRESSION = [
@@ -28,45 +29,6 @@ def home():
         'online': True
     })
 
-def compressImage(file, quality = None):
-    if not quality:
-        quality = 80
-    filepath = UPLOAD_FOLDER + file
-
-    image = Image.open(filepath)
-    image.save(filepath, image.format, optimize=True, quality=quality)
-    return
-
-def resizeImage(file, size = None):
-    if not size:
-        return
-    filepath = UPLOAD_FOLDER + file
-    image = Image.open(filepath)
-    width, height = image.size
-    print(width, height)
-
-    return
-
-def saveFile(file, name, folder=None, format = None):
-    path = ''
-    if folder:
-        path += '/' + folder
-    
-    if not os.path.exists(UPLOAD_FOLDER + path):
-        os.makedirs(UPLOAD_FOLDER + path)
-
-    if name == 'file':
-        name = str(int(random() * 1000000000000000))
-    path += '/' + slugify(name.lower())
-
-    if not format:
-        format = file.filename.split('.')[-1]
-    path += '.' + format
-
-    file.save(UPLOAD_FOLDER + path)
-    return path
-
-
 @app.route('/upload', methods=['POST'])
 def upload():
     if len(request.files) == 0:
@@ -77,6 +39,7 @@ def upload():
     folder = None
     quality = None
     size = None
+    format = None
 
     if 'folder' in request.form:
         folder = request.form.get('folder')
@@ -84,6 +47,8 @@ def upload():
         quality = request.form.get('quality')
     if 'size' in request.form:
         size = request.form.get('size')
+    if 'format' in request.form:
+        format = request.form.get('format')
     
     files = []
     for key, file in request.files.items():
@@ -97,10 +62,11 @@ def upload():
         data['file'] = file
         data['folder'] = folder
         savedFile = saveFile(**data)
-        
-        file_name, file_extension = os.path.splitext(savedFile)
+
+        file_extension = pathlib.Path(savedFile).suffix
         mimetype = mimetypes.types_map[file_extension]
         if mimetype in MIMES_COMPRESSION:
+            savedFile = convertImage(savedFile, format)
             compressImage(savedFile, quality)
             resizeImage(savedFile, size)
         
@@ -117,6 +83,34 @@ def upload():
     response.status_code = 201
     return response
 
+@app.route('/thumbnail/<path:filename>', methods=['GET'])
+def getResourceThumbnail(filename):
+    filepath = UPLOAD_FOLDER + '/' + filename
+    if not os.path.exists(filepath):
+        return abort(404)
+    
+    file_extension = pathlib.Path(filepath).suffix
+    mimetype = mimetypes.types_map[file_extension]
+    if mimetype not in MIMES_COMPRESSION:
+        return abort(400)
+
+    size = None
+    if (request.args.get('size')):
+        size = request.args.get('size')
+    data = thumbnailImage(filepath, size)
+
+    return Response(data, mimetype=mimetype)
+
+@app.route('/<path:filename>', methods=['GET'])
+def getResource(filename):
+    filepath = UPLOAD_FOLDER + '/' + filename
+    if not os.path.exists(filepath):
+        return abort(404)
+
+    mimetype = mimetypes.guess_type(filepath)[0]
+    with open(filepath, 'rb') as content:
+        data = content.read()
+    return Response(data, mimetype=mimetype)
 
 if __name__ == "__main__":
     app.run(debug=True)
